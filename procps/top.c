@@ -55,6 +55,7 @@ typedef struct jiffy_counts_t {
 	unsigned long long iowait, irq, softirq, steal;
 	unsigned long long total;
 	unsigned long long busy;
+	unsigned long frequency;
 } jiffy_counts_t;
 
 /* This structure stores some critical information from one frame to
@@ -206,6 +207,26 @@ static NOINLINE int read_cpu_jiffy(FILE *fp, jiffy_counts_t *p_jif)
 	return ret;
 }
 
+static long get_cpu_frequency(int num)
+{
+	long freq = 0;
+	char path_buf[1024];
+	snprintf(path_buf, 1024, "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", num);
+	FILE *freq_fp = fopen(path_buf, "r");
+
+	if (freq_fp == 0) {	/* CPU0 always on. other CPU could be hotplug. */
+		snprintf(path_buf, 1024, "/sys/devices/system/cpu/cpu%d/cpufreq/scaling_cur_freq", 0);
+		freq_fp = fopen(path_buf, "r");
+	}
+
+	if (freq_fp != 0) {
+		fscanf(freq_fp, "%ld", &freq);
+		fclose(freq_fp);
+	}
+
+	return freq;
+}
+
 static void get_jiffy_counts(void)
 {
 	FILE* fp = xfopen_for_read("stat");
@@ -215,6 +236,8 @@ static void get_jiffy_counts(void)
 	prev_jif = cur_jif;
 	if (read_cpu_jiffy(fp, &cur_jif) < 4)
 		bb_error_msg_and_die("can't read /proc/stat");
+	
+	cur_jif.frequency = get_cpu_frequency(0);
 
 #if !ENABLE_FEATURE_TOP_SMP_CPU
 	fclose(fp);
@@ -226,6 +249,7 @@ static void get_jiffy_counts(void)
 	}
 
 	if (!num_cpus) {
+
 		/* First time here. How many CPUs?
 		 * There will be at least 1 /proc/stat line with cpu%d
 		 */
@@ -252,8 +276,11 @@ static void get_jiffy_counts(void)
 		cpu_jif = tmp;
 
 		/* Get the new samples */
-		for (i = 0; i < num_cpus; i++)
+		for (i = 0; i < num_cpus; i++) {
 			read_cpu_jiffy(fp, &cpu_jif[i]);
+			cpu_jif[i].frequency = get_cpu_frequency(i);
+		}
+		
 	}
 #endif
 	fclose(fp);
@@ -395,11 +422,12 @@ static void display_cpus(int scr_width, char *scrbuf, int *lines_rem_p)
 			snprintf(scrbuf, scr_width,
 				/* Barely fits in 79 chars when in "decimals" mode. */
 #if ENABLE_FEATURE_TOP_SMP_CPU
-				"CPU%s:"FMT"usr"FMT"sys"FMT"nic"FMT"idle"FMT"io"FMT"irq"FMT"sirq",
+				"CPU%s: ""%ld""MHz"FMT"usr"FMT"sys"FMT"nic"FMT"idle"FMT"io"FMT"irq"FMT"sirq",
 				(smp_cpu_info ? utoa(i) : ""),
 #else
-				"CPU:"FMT"usr"FMT"sys"FMT"nic"FMT"idle"FMT"io"FMT"irq"FMT"sirq",
+				"CPU:" "%ld""MHz"FMT"usr"FMT"sys"FMT"nic"FMT"idle"FMT"io"FMT"irq"FMT"sirq",
 #endif
+				 p_jif->frequency == 0 ? 0: p_jif->frequency / 1000,
 				SHOW_STAT(usr), SHOW_STAT(sys), SHOW_STAT(nic), SHOW_STAT(idle),
 				SHOW_STAT(iowait), SHOW_STAT(irq), SHOW_STAT(softirq)
 				/*, SHOW_STAT(steal) - what is this 'steal' thing? */
