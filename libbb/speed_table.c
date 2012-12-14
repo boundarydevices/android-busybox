@@ -3,6 +3,7 @@
  * compact speed_t <-> speed functions for busybox
  *
  * Copyright (C) 2003  Manuel Novoa III  <mjn3@codepoet.org>
+ * Copyright (C) 2012 Freescale Semiconductor, Inc.
  *
  * Licensed under GPLv2 or later, see file LICENSE in this tarball for details.
  */
@@ -11,7 +12,7 @@
 
 struct speed_map {
 	unsigned short speed;
-	unsigned short value;
+	unsigned int value;
 };
 
 static const struct speed_map speeds[] = {
@@ -51,6 +52,7 @@ static const struct speed_map speeds[] = {
 #ifdef B460800
 	{B460800, 460800/256 + 0x8000U},
 #endif
+	{B3500000, 3500000},
 };
 
 enum { NUM_SPEEDS = ARRAY_SIZE(speeds) };
